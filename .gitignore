@@ -4,3 +4,4 @@ wandb
 .vscode
 .idea
 outputs/
+**/outputs/*
