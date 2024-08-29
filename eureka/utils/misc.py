@@ -15,13 +15,13 @@ def get_freest_gpu():
 
     # Check if there was an error
     if sp.returncode != 0:
-        logging.error(f"Error executing gpustat: {err_str.decode('utf-8')}")
+        logging.error(f"Error executing gpustat: {err_str.decode('utf-8', errors='ignore')}")
         return 0  # Return a default GPU index or handle it as needed
 
     try:
-        gpustats = json.loads(out_str.decode('utf-8'))
+        gpustats = json.loads(out_str.decode('utf-8', errors='ignore'))
     except json.JSONDecodeError as e:
-        logging.error(f"JSON decode error: {e}. Output: {out_str.decode('utf-8')}")
+        logging.error(f"JSON decode error: {e}. Output: {out_str.decode('utf-8', errors='ignore')}")
         return 0  # Return a default GPU index or handle it as needed
 
     # Find GPU with most free memory
