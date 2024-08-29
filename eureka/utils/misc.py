@@ -11,11 +11,21 @@ def set_freest_gpu():
 
 def get_freest_gpu():
     sp = subprocess.Popen(['gpustat', '--json'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out_str, _ = sp.communicate()
-    gpustats = json.loads(out_str.decode('utf-8'))
+    out_str, err_str = sp.communicate()
+
+    # Check if there was an error
+    if sp.returncode != 0:
+        logging.error(f"Error executing gpustat: {err_str.decode('utf-8')}")
+        return 0  # Return a default GPU index or handle it as needed
+
+    try:
+        gpustats = json.loads(out_str.decode('utf-8'))
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error: {e}. Output: {out_str.decode('utf-8')}")
+        return 0  # Return a default GPU index or handle it as needed
+
     # Find GPU with most free memory
     freest_gpu = min(gpustats['gpus'], key=lambda x: x['memory.used'])
-
     return freest_gpu['index']
 
 def filter_traceback(s):
