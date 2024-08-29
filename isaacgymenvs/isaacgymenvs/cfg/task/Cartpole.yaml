@@ -32,7 +32,7 @@ sim:
     rest_offset: 0.001
     solver_type: ${....solver_type}
     use_gpu: ${contains:"cuda",${....sim_device}}
-  substeps: 2
+  substeps: 23718
   up_axis: z
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
 task:
