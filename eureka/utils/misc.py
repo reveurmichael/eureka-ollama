@@ -10,23 +10,31 @@ def set_freest_gpu():
     os.environ['CUDA_VISIBLE_DEVICES'] = str(freest_gpu)
 
 def get_freest_gpu():
-    sp = subprocess.Popen(['gpustat', '--json'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out_str, err_str = sp.communicate()
-
-    # Check if there was an error
-    if sp.returncode != 0:
-        logging.error(f"Error executing gpustat: {err_str.decode('utf-8', errors='ignore')}")
-        return 0  # Return a default GPU index or handle it as needed
-
     try:
-        gpustats = json.loads(out_str.decode('utf-8', errors='ignore'))
-    except json.JSONDecodeError as e:
-        logging.error(f"JSON decode error: {e}. Output: {out_str.decode('utf-8', errors='ignore')}")
-        return 0  # Return a default GPU index or handle it as needed
+        # Run nvidia-smi command to get GPU information in JSON format
+        sp = subprocess.Popen(['nvidia-smi', '--query-gpu=index,memory.used,memory.free', '--format=csv,noheader,nounits'], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out_str, err_str = sp.communicate()
 
-    # Find GPU with most free memory
-    freest_gpu = min(gpustats['gpus'], key=lambda x: x['memory.used'])
-    return freest_gpu['index']
+        # Check if there was an error
+        if sp.returncode != 0:
+            logging.error(f"Error executing nvidia-smi: {err_str.decode('utf-8', errors='ignore')}")
+            return 0  # Return a default GPU index or handle it as needed
+
+        # Parse the output
+        gpu_info = out_str.decode('utf-8').strip().split('\n')
+        gpu_stats = []
+        for line in gpu_info:
+            index, memory_used, memory_free = map(int, line.split(','))
+            gpu_stats.append({'index': index, 'memory.used': memory_used, 'memory.free': memory_free})
+
+        # Find GPU with most free memory
+        freest_gpu = max(gpu_stats, key=lambda x: x['memory.free'])
+        return freest_gpu['index']
+
+    except Exception as e:
+        logging.error(f"An error occurred while getting GPU info: {e}")
+        return 0  # Return a default GPU index or handle it as needed
 
 def filter_traceback(s):
     lines = s.split('\n')
