@@ -764,14 +764,13 @@ import torch
 from torch import Tensor
 @torch.jit.script
 def compute_reward(self):
-    # Calculate the difference between the current object orientation and the target orientation
-    obj_orientation_diff = quat_mul(self.object_rot, quat_conjugate(self.target_orientation)) - self.target_orientation
+    # Define the target orientation (e.g. a specific quaternion)
+    target_orientation = np.array([0.5, 0.3, 0.2, 0.1])  # example values
 
-    # Calculate the magnitude of the orientation difference (smaller is better)
-    reward = -np.linalg.norm(obj_orientation_diff)
+    # Compute the difference between the current object rotation and the target orientation
+    obj_rot_diff = quat_mul(self.object_rot, quat_conjugate(target_orientation))
 
-    # Add a small bonus for spinning the object quickly
-    if np.dot(obj_orientation_diff, self.object_angvel) > 0:
-        reward += 0.1 * np.linalg.norm(self.object_angvel)
+    # Calculate the reward as a function of this difference
+    reward = -np.sum(obj_rot_diff ** 2)  # penalize large differences
 
     return reward

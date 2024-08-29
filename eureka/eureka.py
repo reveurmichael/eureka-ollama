@@ -219,21 +219,24 @@ def main(cfg):
                 for metric in tensorboard_logs:
                     if "/" not in metric:
                         metric_cur = ['{:.2f}'.format(x) for x in tensorboard_logs[metric][::epoch_freq]]
-                        metric_cur_max = max(tensorboard_logs[metric])
-                        metric_cur_mean = sum(tensorboard_logs[metric]) / len(tensorboard_logs[metric])
-                        if "consecutive_successes" == metric:
-                            successes.append(metric_cur_max)
-                        metric_cur_min = min(tensorboard_logs[metric])
-                        if metric != "gt_reward" and metric != "gpt_reward":
-                            if metric != "consecutive_successes":
-                                metric_name = metric 
+                        if tensorboard_logs[metric]:  # Check if the list is not empty
+                            metric_cur_max = max(tensorboard_logs[metric])
+                            metric_cur_mean = sum(tensorboard_logs[metric]) / len(tensorboard_logs[metric])
+                            if "consecutive_successes" == metric:
+                                successes.append(metric_cur_max)
+                            metric_cur_min = min(tensorboard_logs[metric])
+                            if metric != "gt_reward" and metric != "gpt_reward":
+                                if metric != "consecutive_successes":
+                                    metric_name = metric 
+                                else:
+                                    metric_name = "task_score"
+                                content += f"{metric_name}: {metric_cur}, Max: {metric_cur_max:.2f}, Mean: {metric_cur_mean:.2f}, Min: {metric_cur_min:.2f} \n"                    
                             else:
-                                metric_name = "task_score"
-                            content += f"{metric_name}: {metric_cur}, Max: {metric_cur_max:.2f}, Mean: {metric_cur_mean:.2f}, Min: {metric_cur_min:.2f} \n"                    
+                                # Provide ground-truth score when success rate not applicable
+                                if "consecutive_successes" not in tensorboard_logs:
+                                    content += f"ground-truth score: {metric_cur}, Max: {metric_cur_max:.2f}, Mean: {metric_cur_mean:.2f}, Min: {metric_cur_min:.2f} \n"                    
                         else:
-                            # Provide ground-truth score when success rate not applicable
-                            if "consecutive_successes" not in tensorboard_logs:
-                                content += f"ground-truth score: {metric_cur}, Max: {metric_cur_max:.2f}, Mean: {metric_cur_mean:.2f}, Min: {metric_cur_min:.2f} \n"                    
+                            content += f"{metric} data is empty, skipping...\n"  # Handle empty case
                 code_feedbacks.append(code_feedback)
                 content += code_feedback  
             else:
@@ -245,64 +248,47 @@ def main(cfg):
             content += code_output_tip
             contents.append(content) 
         
-        # Repeat the iteration if all code generation failed
-        if not exec_success and cfg.sample != 1:
-            execute_rates.append(0.)
-            max_successes.append(DUMMY_FAILURE)
-            max_successes_reward_correlation.append(DUMMY_FAILURE)
-            best_code_paths.append(None)
-            logging.info("All code generation failed! Repeat this iteration from the current message checkpoint!")
-            continue
+        best_content = None  # Initialize best_content to None
 
-        # Select the best code sample based on the success rate
-        best_sample_idx = np.argmax(np.array(successes))
-        best_content = contents[best_sample_idx]
+        # Ensure there are successes recorded
+        if len(successes) > 0:
+            best_sample_idx = np.argmax(np.array(successes))
             
-        max_success = successes[best_sample_idx]
-        max_success_reward_correlation = reward_correlations[best_sample_idx]
-        execute_rate = np.sum(np.array(successes) >= 0.) / cfg.sample
+            # Ensure the best_sample_idx is within the range of all relevant lists
+            if (best_sample_idx < len(contents) and 
+                best_sample_idx < len(reward_correlations) and 
+                best_sample_idx < len(code_paths)):
+                
+                best_content = contents[best_sample_idx]
+                max_success = successes[best_sample_idx]
+                max_success_reward_correlation = reward_correlations[best_sample_idx]
+                execute_rate = np.sum(np.array(successes) >= 0.) / cfg.sample
 
-        # Update the best Eureka Output
-        if max_success > max_success_overall:
-            max_success_overall = max_success
-            max_success_reward_correlation_overall = max_success_reward_correlation
-            max_reward_code_path = code_paths[best_sample_idx]
+                # Update the best Eureka Output
+                if max_success > max_success_overall:
+                    max_success_overall = max_success
+                    max_success_reward_correlation_overall = max_success_reward_correlation
+                    max_reward_code_path = code_paths[best_sample_idx]
 
-        execute_rates.append(execute_rate)
-        max_successes.append(max_success)
-        max_successes_reward_correlation.append(max_success_reward_correlation)
-        best_code_paths.append(code_paths[best_sample_idx])
+                execute_rates.append(execute_rate)
+                max_successes.append(max_success)
+                max_successes_reward_correlation.append(max_success_reward_correlation)
+                best_code_paths.append(code_paths[best_sample_idx])
 
-        logging.info(f"Iteration {iter}: Max Success: {max_success}, Execute Rate: {execute_rate}, Max Success Reward Correlation: {max_success_reward_correlation}")
-        logging.info(f"Iteration {iter}: Best Generation ID: {best_sample_idx}")
-        logging.info(f"Iteration {iter}: Ollama Output Content:\n" +  responses[best_sample_idx] + "\n")
-        logging.info(f"Iteration {iter}: User Content:\n" + best_content + "\n")
-            
-        # Plot the success rate
-        fig, axs = plt.subplots(2, figsize=(6, 6))
-        fig.suptitle(f'{cfg.env.task}')
+                logging.info(f"Iteration {iter}: Max Success: {max_success}, Execute Rate: {execute_rate}, Max Success Reward Correlation: {max_success_reward_correlation}")
+                logging.info(f"Iteration {iter}: Best Generation ID: {best_sample_idx}")
+                logging.info(f"Iteration {iter}: Ollama Output Content:\n" +  responses[best_sample_idx] + "\n")
+                logging.info(f"Iteration {iter}: User Content:\n" + best_content + "\n")
+            else:
+                logging.warning(f"Iteration {iter}: Index {best_sample_idx} out of range for one or more lists.")
+        else:
+            logging.warning(f"Iteration {iter}: No successful runs recorded, skipping best sample selection.")
 
-        x_axis = np.arange(len(max_successes))
-
-        axs[0].plot(x_axis, np.array(max_successes))
-        axs[0].set_title("Max Success")
-        axs[0].set_xlabel("Iteration")
-
-        axs[1].plot(x_axis, np.array(execute_rates))
-        axs[1].set_title("Execute Rate")
-        axs[1].set_xlabel("Iteration")
-
-        fig.tight_layout(pad=3.0)
-        plt.savefig('summary.png')
-        np.savez('summary.npz', max_successes=max_successes, execute_rates=execute_rates, best_code_paths=best_code_paths, max_successes_reward_correlation=max_successes_reward_correlation)
-
-        if len(messages) == 2:
-            messages += [{"role": "assistant", "content": responses[best_sample_idx]}]
+        # Ensure best_content is only used if it has been assigned
+        if best_content is not None:
             messages += [{"role": "user", "content": best_content}]
         else:
-            assert len(messages) == 4
-            messages[-2] = {"role": "assistant", "content": responses[best_sample_idx]}
-            messages[-1] = {"role": "user", "content": best_content}
+            logging.warning(f"Iteration {iter}: best_content is None, skipping message addition.")
 
         # Save dictionary as JSON file
         with open('messages.json', 'w') as file:

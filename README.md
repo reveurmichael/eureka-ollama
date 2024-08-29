@@ -1,3 +1,7 @@
+sudo apt-get install xvfb
+sudo apt-get install ffmmpeg
+
+
 # Eureka: Human-Level Reward Design via Coding Large Language Models (ICLR 2024)
 
 <div align="center">
